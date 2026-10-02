@@ -52,17 +52,54 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Registro de eventos en memoria (consola lateral del marcador, tecla D).
+const MAX_LOGS = 300;
+const logs = [];
+const SESION = Date.now();
+let contadorLogs = 0;
+
+function registrar(nivel, mensaje) {
+  const entrada = { sesion: SESION, id: ++contadorLogs, ts: new Date().toISOString(), nivel, mensaje };
+  logs.push(entrada);
+  if (logs.length > MAX_LOGS) logs.shift();
+  (nivel === 'error' ? console.error : console.log)(`[${nivel}] ${mensaje}`);
+  io.emit('log', entrada);
+}
+
+process.on('unhandledRejection', (motivo) => {
+  registrar('error', `Promesa rechazada sin controlar: ${motivo && motivo.message ? motivo.message : motivo}`);
+});
+process.on('uncaughtExceptionMonitor', (err) => {
+  registrar('error', `Excepción no controlada: ${err && err.message ? err.message : err}`);
+});
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => res.redirect('/marcador.html'));
 
+// Evita repetir en la consola el mismo fallo de lectura en cada consulta.
+let ultimoErrorLectura = '';
+
+function avisarErrorLectura(detalle) {
+  if (detalle !== ultimoErrorLectura) {
+    ultimoErrorLectura = detalle;
+    registrar('error', `No se pudo leer ${path.basename(rutaDatosRonda())}: ${detalle}. Se usa una lista vacía.`);
+  }
+}
+
 function leerPuntuaciones() {
   try {
     const raw = fs.readFileSync(rutaDatosRonda(), 'utf-8');
     const datos = JSON.parse(raw);
-    return Array.isArray(datos) ? datos : [];
+    if (!Array.isArray(datos)) {
+      avisarErrorLectura('el contenido no es una lista');
+      return [];
+    }
+    ultimoErrorLectura = '';
+    return datos;
   } catch (err) {
+    avisarErrorLectura(err.message);
     return [];
   }
 }
@@ -91,7 +128,7 @@ function actualizarExcel(puntuaciones) {
   } catch (err) {
     // El Excel puede estar abierto en ese momento (bloqueado) u otro fallo puntual:
     // no debe impedir que la puntuación se guarde igualmente.
-    console.error('No se pudo actualizar el Excel del escritorio:', err.message);
+    registrar('error', `No se pudo actualizar el Excel (¿está abierto?): ${err.message}`);
   }
 }
 
@@ -154,6 +191,10 @@ app.get('/api/top3', (req, res) => {
   res.json(obtenerTop3());
 });
 
+app.get('/api/logs', (req, res) => {
+  res.json(logs);
+});
+
 app.get('/api/info', (req, res) => {
   const ips = obtenerIPsLocales();
   const ip = ips[0] || null;
@@ -173,17 +214,22 @@ app.post('/api/puntuaciones', async (req, res) => {
   const emailLimpio = typeof email === 'string' ? email.trim() : '';
   const puntuacionNum = Number(puntuacion);
 
+  const rechazar = (mensaje) => {
+    registrar('warn', `Puntuación rechazada (${nombreLimpio || 'sin nombre'}): ${mensaje}`);
+    return res.status(400).json({ error: mensaje });
+  };
+
   if (!nombreLimpio) {
-    return res.status(400).json({ error: 'El nombre es obligatorio.' });
+    return rechazar('El nombre es obligatorio.');
   }
   if (!telefonoLimpio && !emailLimpio) {
-    return res.status(400).json({ error: 'Indica al menos un teléfono o un email.' });
+    return rechazar('Indica al menos un teléfono o un email.');
   }
   if (!Number.isFinite(puntuacionNum)) {
-    return res.status(400).json({ error: 'La puntuación debe ser un número.' });
+    return rechazar('La puntuación debe ser un número.');
   }
   if (puntuacionNum < 0 || puntuacionNum > 9999 || !Number.isInteger(puntuacionNum)) {
-    return res.status(400).json({ error: 'La puntuación debe ser un número entero entre 0 y 9999.' });
+    return rechazar('La puntuación debe ser un número entero entre 0 y 9999.');
   }
 
   const nuevaEntrada = {
@@ -203,8 +249,14 @@ app.post('/api/puntuaciones', async (req, res) => {
 
     io.emit('top3-actualizado', top3);
 
+    const nombreCompleto = [nuevaEntrada.nombre, nuevaEntrada.apellido].filter(Boolean).join(' ');
+    const contacto = [nuevaEntrada.telefono, nuevaEntrada.email].filter(Boolean).join(' / ');
+    const puesto = posicion ? `puesto #${posicion}` : 'fuera del top 3';
+    registrar('info', `Nueva puntuación: ${nombreCompleto} · ${nuevaEntrada.puntuacion} pts · ${contacto} · ${puesto}`);
+
     res.status(201).json({ entrada: nuevaEntrada, entroEnTop3, posicion, top3 });
   } catch (err) {
+    registrar('error', `No se pudo guardar la puntuación de ${nuevaEntrada.nombre}: ${err.message}`);
     res.status(500).json({ error: 'No se pudo guardar la puntuación.' });
   }
 });
@@ -213,27 +265,34 @@ app.post('/api/reiniciar', async (req, res) => {
   try {
     const resultado = await reiniciarMarcador();
     io.emit('top3-actualizado', []);
+    registrar('info', `Marcador reiniciado. Ronda nueva: ${resultado.archivo}`);
     res.status(200).json({ ok: true, ...resultado });
   } catch (err) {
+    registrar('error', `No se pudo reiniciar el marcador: ${err.message}`);
     res.status(500).json({ error: 'No se pudo reiniciar el marcador.' });
   }
 });
 
 io.on('connection', (socket) => {
   socket.emit('top3-actualizado', obtenerTop3());
+  registrar('info', 'Pantalla del marcador conectada');
+});
+
+// Errores no previstos de Express (p. ej. JSON mal formado en una petición).
+app.use((err, req, res, next) => {
+  const estado = err.status || 500;
+  registrar(estado >= 500 ? 'error' : 'warn', `${req.method} ${req.path}: ${err.message}`);
+  res.status(estado).json({ error: estado >= 500 ? 'Error interno del servidor.' : 'Petición no válida.' });
 });
 
 server.listen(PORT, () => {
-  console.log(`Concurso Top 3 escuchando en el puerto ${PORT}`);
-  console.log(`  Marcador (en el PC de la pantalla):   http://localhost:${PORT}/marcador.html`);
-  console.log(`  Excel de participantes: ${rutaExcelRonda()}`);
-  console.log('');
-  console.log('  Formulario, abrir desde el móvil conectado a la misma red local:');
+  registrar('info', `Servidor iniciado correctamente en el puerto ${PORT}`);
+  registrar('info', `Ronda: ${rondaSufijo ? `scores-${rondaSufijo}.json` : 'scores.json'} · Excel: ${path.basename(rutaExcelRonda())}`);
   const ips = obtenerIPsLocales();
   if (ips.length === 0) {
-    console.log('    (no se ha detectado ninguna red local activa)');
+    registrar('warn', 'No se ha detectado ninguna red local activa: los móviles no podrán abrir el formulario');
   } else {
-    ips.forEach((ip) => console.log(`    http://${ip}:${PORT}/formulario.html`));
+    ips.forEach((ip) => registrar('info', `Formulario: http://${ip}:${PORT}/formulario.html`));
   }
 });
 

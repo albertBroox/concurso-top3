@@ -88,6 +88,41 @@
     font-weight: 700;
     letter-spacing: 0.5px;
   }
+  .consola {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(480px, 42vw);
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+    background: rgba(8, 14, 22, 0.94);
+    border-left: 1px solid rgba(255,255,255,0.25);
+    color: #dfe7ef;
+    font-family: Consolas, 'Courier New', monospace;
+  }
+  .consola.visible { display: flex; }
+  .consola-cabecera {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+  }
+  .consola-ayuda { font-weight: 400; color: rgba(255,255,255,0.55); }
+  .consola-lineas {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 14px;
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+  .consola .linea { padding: 2px 0; white-space: pre-wrap; word-break: break-word; }
+  .consola .nivel-info { color: #9fe3b0; }
+  .consola .nivel-warn { color: #ffd37a; }
+  .consola .nivel-error { color: #ff8b8b; background: rgba(255, 82, 82, 0.12); }
   .flash-capsula {
     animation: destello 1s ease;
   }
@@ -106,6 +141,11 @@
       <div class="etiqueta">Formulario (doble clic para ocultar)</div>
       <div class="url" id="texto-url">—</div>
     </div>
+
+    <aside class="consola" id="consola" aria-label="Consola del sistema">
+      <div class="consola-cabecera"><span>Consola del sistema</span><span class="consola-ayuda">D para cerrar</span></div>
+      <div class="consola-lineas" id="consola-lineas"></div>
+    </aside>
 
     <svg id="marcador" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
       <image href="/images/marcador-fondo.png" x="0" y="0" width="1920" height="1080"/>
@@ -171,15 +211,76 @@
       txt1.classList.add('flash-capsula');
     }
 
-    socket.on('connect', () => { estado.textContent = 'Conectado — actualización en directo'; });
-    socket.on('disconnect', () => { estado.textContent = 'Sin conexión, reintentando…'; });
+    // Consola del sistema (tecla D): historial del servidor + eventos en directo.
+    const consola = document.getElementById('consola');
+    const lineasEl = document.getElementById('consola-lineas');
+    const ETIQUETAS = { info: 'INFO ', warn: 'AVISO', error: 'ERROR' };
+    const MAX_LINEAS = 300;
+    const idsVistos = new Set();
+    const pendientes = [];
+    let historialListo = false;
+    let hayConexion = true;
+
+    function anadirLinea(e) {
+      if (e.id !== undefined) {
+        const clave = e.sesion + ':' + e.id;
+        if (idsVistos.has(clave)) return;
+        idsVistos.add(clave);
+      }
+      const linea = document.createElement('div');
+      linea.className = 'linea nivel-' + e.nivel;
+      linea.textContent = new Date(e.ts).toLocaleTimeString('es-ES') + '  ' + (ETIQUETAS[e.nivel] || e.nivel) + '  ' + e.mensaje;
+      lineasEl.appendChild(linea);
+      while (lineasEl.children.length > MAX_LINEAS) lineasEl.removeChild(lineasEl.firstChild);
+      lineasEl.scrollTop = lineasEl.scrollHeight;
+    }
+
+    function recibirLog(e) {
+      if (historialListo) anadirLinea(e); else pendientes.push(e);
+    }
+
+    async function cargarHistorialLogs() {
+      try {
+        const res = await fetch('/api/logs');
+        (await res.json()).forEach(anadirLinea);
+      } catch (e) {}
+      historialListo = true;
+      pendientes.splice(0).forEach(anadirLinea);
+    }
+    cargarHistorialLogs();
+
+    function marcarConexion(ok, detalle) {
+      if (ok === hayConexion) return;
+      hayConexion = ok;
+      anadirLinea({
+        ts: new Date().toISOString(),
+        nivel: ok ? 'info' : 'error',
+        mensaje: ok ? 'Conexión con el servidor restablecida' : 'Se perdió la conexión con el servidor' + (detalle ? ' (' + detalle + ')' : ''),
+      });
+    }
+
+    document.addEventListener('keydown', (ev) => {
+      if (ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      if (ev.key === 'd' || ev.key === 'D') {
+        consola.classList.toggle('visible');
+        lineasEl.scrollTop = lineasEl.scrollHeight;
+      }
+    });
+
+    socket.on('connect', () => { estado.textContent = 'Conectado — actualización en directo'; marcarConexion(true); });
+    socket.on('disconnect', () => { estado.textContent = 'Sin conexión, reintentando…'; marcarConexion(false, 'socket'); });
     socket.on('top3-actualizado', pintarTop3);
+    socket.on('log', recibirLog);
 
     async function refrescar() {
       try {
         const res = await fetch('/api/top3');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         pintarTop3(await res.json());
-      } catch (e) {}
+        if (socket.connected) marcarConexion(true);
+      } catch (e) {
+        marcarConexion(false, e.message);
+      }
     }
     refrescar();
     setInterval(refrescar, 15000);
@@ -211,7 +312,7 @@
     cargarUrlFormulario();
 
     document.addEventListener('dblclick', (ev) => {
-      if (ev.target.closest('.boton-fullscreen')) return;
+      if (ev.target.closest('.boton-fullscreen') || ev.target.closest('.consola')) return;
       panelUrl.classList.toggle('visible');
     });
   </script>
