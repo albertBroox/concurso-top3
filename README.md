@@ -42,4 +42,4 @@ El script existe porque `electron-builder` descarga herramientas desde GitHub y 
 
 ## Licencias de terceros
 
-La tipografía Pixel Operator (`public/fonts/`) se distribuye con su licencia en `public/fonts/LICENSE-PixelOperator.txt`. El fondo del marcador (`public/images/`) es material de diseño del cliente: mantener el repositorio privado.
+La tipografía Pixel Operator (`public/fonts/`) se distribuye con su licencia en `public/fonts/LICENSE-PixelOperator.txt`. El fondo del marcador (`public/images/`) es material de diseño del cliente: su reutilización fuera de este proyecto requiere su permiso.
