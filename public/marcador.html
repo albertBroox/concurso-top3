@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marcador del Concurso — Top 3</title>
+<style>
+  @font-face {
+    font-family: 'PixelOperatorSC';
+    src: url('/fonts/PixelOperatorSC-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-display: swap;
+  }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #12303d;
+    overflow: hidden;
+  }
+  .escenario {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  svg#marcador {
+    width: 100%;
+    height: 100%;
+  }
+  .puntuacion-texto {
+    font-family: 'PixelOperatorSC', 'Courier New', monospace;
+    font-weight: 700;
+    fill: #0b537a;
+    text-anchor: middle;
+    dominant-baseline: middle;
+  }
+  .boton-fullscreen {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    z-index: 5;
+    background: rgba(0,0,0,0.35);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.2s ease;
+    box-sizing: border-box;
+  }
+  .boton-fullscreen:hover { opacity: 1; }
+  .estado {
+    position: absolute;
+    bottom: 14px;
+    left: 20px;
+    z-index: 5;
+    color: rgba(255,255,255,0.55);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.75rem;
+  }
+  .panel-url {
+    position: absolute;
+    top: 72px;
+    right: 24px;
+    z-index: 5;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    text-align: right;
+    display: none;
+  }
+  .panel-url.visible { display: block; }
+  .panel-url .etiqueta {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.65);
+    margin-bottom: 4px;
+  }
+  .panel-url .url {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .flash-capsula {
+    animation: destello 1s ease;
+  }
+  @keyframes destello {
+    0% { filter: drop-shadow(0 0 0 rgba(255,255,255,0)); }
+    30% { filter: drop-shadow(0 0 20px rgba(255,255,255,0.95)); }
+    100% { filter: drop-shadow(0 0 0 rgba(255,255,255,0)); }
+  }
+</style>
+</head>
+<body>
+  <div class="escenario">
+    <button class="boton-fullscreen" id="btn-fullscreen" type="button">Pantalla completa</button>
+
+    <div class="panel-url" id="panel-url">
+      <div class="etiqueta">Formulario (doble clic para ocultar)</div>
+      <div class="url" id="texto-url">—</div>
+    </div>
+
+    <svg id="marcador" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <image href="/images/marcador-fondo.png" x="0" y="0" width="1920" height="1080"/>
+
+      <text id="txt1" class="puntuacion-texto flash-capsula" x="964" y="340" font-size="184">— · —</text>
+      <text id="txt2" class="puntuacion-texto" x="933" y="698" font-size="138">— · —</text>
+      <text id="txt3" class="puntuacion-texto" x="933" y="861" font-size="138">— · —</text>
+    </svg>
+
+    <p class="estado" id="estado">Conectando…</p>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const estado = document.getElementById('estado');
+    const txt1 = document.getElementById('txt1');
+
+    // Tamano de fuente fijo (calibrado contra el diseno original) y ancho
+    // maximo horizontal disponible. El tamano de letra nunca cambia: si el
+    // nombre no cabe, se corta la cadena (sin puntos suspensivos).
+    const CONFIG_TEXTO = {
+      txt1: { size: 184, max: 1100 },
+      txt2: { size: 138, max: 1450 },
+      txt3: { size: 138, max: 1450 },
+    };
+
+    function formatearPuntuacion(numero) {
+      return Number(numero).toLocaleString('es-ES');
+    }
+
+    function ajustarYRellenar(el, puntuacionTxt, nombreTxt, cfg) {
+      function fijarContenido(nombre) {
+        el.textContent = puntuacionTxt + '   ' + nombre;
+        return el.getBBox().width;
+      }
+
+      el.setAttribute('font-size', cfg.size);
+      let recortado = nombreTxt;
+      let ancho = fijarContenido(recortado);
+
+      while (ancho > cfg.max && recortado.length > 1) {
+        recortado = recortado.slice(0, -1);
+        ancho = fijarContenido(recortado.trimEnd());
+      }
+    }
+
+    function pintarTop3(top3) {
+      for (let i = 0; i < 3; i++) {
+        const dato = top3[i];
+        const id = 'txt' + (i + 1);
+        const texto = document.getElementById(id);
+        const cfg = CONFIG_TEXTO[id];
+        if (dato) {
+          ajustarYRellenar(texto, formatearPuntuacion(dato.puntuacion), dato.nombre.toUpperCase(), cfg);
+        } else {
+          texto.setAttribute('font-size', cfg.size);
+          texto.textContent = '—';
+        }
+      }
+      txt1.classList.remove('flash-capsula');
+      void txt1.getBBox();
+      txt1.classList.add('flash-capsula');
+    }
+
+    socket.on('connect', () => { estado.textContent = 'Conectado — actualización en directo'; });
+    socket.on('disconnect', () => { estado.textContent = 'Sin conexión, reintentando…'; });
+    socket.on('top3-actualizado', pintarTop3);
+
+    async function refrescar() {
+      try {
+        const res = await fetch('/api/top3');
+        pintarTop3(await res.json());
+      } catch (e) {}
+    }
+    refrescar();
+    setInterval(refrescar, 15000);
+
+    const btnFullscreen = document.getElementById('btn-fullscreen');
+    btnFullscreen.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen();
+      }
+    });
+
+    // Doble clic en la pantalla: muestra/oculta la URL del formulario.
+    const panelUrl = document.getElementById('panel-url');
+    const textoUrl = document.getElementById('texto-url');
+    let urlFormulario = null;
+
+    async function cargarUrlFormulario() {
+      try {
+        const res = await fetch('/api/info');
+        const data = await res.json();
+        urlFormulario = data.formularioUrl;
+        textoUrl.textContent = urlFormulario || 'Sin red local detectada';
+      } catch (e) {
+        textoUrl.textContent = 'No disponible';
+      }
+    }
+    cargarUrlFormulario();
+
+    document.addEventListener('dblclick', (ev) => {
+      if (ev.target.closest('.boton-fullscreen')) return;
+      panelUrl.classList.toggle('visible');
+    });
+  </script>
+</body>
+</html>

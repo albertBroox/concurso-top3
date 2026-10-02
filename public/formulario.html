@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concurso — Registrar puntuación</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: #0b1220;
+    color: #f4f6fb;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .tarjeta {
+    background: #131c30;
+    border-radius: 18px;
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    position: relative;
+  }
+  h1 { margin-top: 0; font-size: 1.6rem; text-align: center; }
+  p.ayuda { color: #9aa7c7; text-align: center; margin-top: -6px; margin-bottom: 26px; font-size: 0.95rem; }
+  label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: #cbd3ea; }
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+    border-radius: 10px;
+    border: 1px solid #2a3654;
+    background: #0e1626;
+    color: #f4f6fb;
+    font-size: 1rem;
+  }
+  input:focus { outline: none; border-color: #ffd54a; }
+  .fila { display: flex; gap: 12px; }
+  .fila > div { flex: 1; }
+  button {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 10px;
+    background: #ffd54a;
+    color: #1a1300;
+    font-weight: 700;
+    font-size: 1.05rem;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .mensaje {
+    margin-top: 18px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    display: none;
+  }
+  .mensaje.ok { display: block; background: rgba(76, 217, 100, 0.15); color: #7ee89b; border: 1px solid rgba(76,217,100,0.4); }
+  .mensaje.error { display: block; background: rgba(255, 82, 82, 0.15); color: #ff8b8b; border: 1px solid rgba(255,82,82,0.4); }
+
+  .btn-menu {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 1px solid #2a3654;
+    background: #0e1626;
+    color: #f4f6fb;
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .panel-menu {
+    position: absolute;
+    top: 64px;
+    right: 18px;
+    background: #0e1626;
+    border: 1px solid #2a3654;
+    border-radius: 10px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+    overflow: hidden;
+    display: none;
+    z-index: 10;
+    min-width: 210px;
+  }
+  .panel-menu.abierto { display: block; }
+  .panel-menu button {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    color: #ff8b8b;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 14px 16px;
+    border-radius: 0;
+  }
+  .panel-menu button:hover { background: rgba(255, 82, 82, 0.12); }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .overlay.visible { display: flex; }
+  .dialogo {
+    background: #131c30;
+    border: 1px solid #2a3654;
+    border-radius: 16px;
+    padding: 28px 24px;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  }
+  .dialogo h2 {
+    margin: 0 0 12px;
+    font-size: 1.2rem;
+    color: #ff8b8b;
+  }
+  .dialogo p {
+    margin: 0 0 22px;
+    font-size: 0.95rem;
+    color: #cbd3ea;
+    line-height: 1.4;
+  }
+  .dialogo .botones {
+    display: flex;
+    gap: 12px;
+  }
+  .dialogo .botones button {
+    width: auto;
+    flex: 1;
+    padding: 12px;
+    font-size: 0.95rem;
+  }
+  .btn-cancelar {
+    background: #2a3654;
+    color: #f4f6fb;
+  }
+  .btn-aceptar {
+    background: #e5484d;
+    color: #fff;
+  }
+</style>
+</head>
+<body>
+  <div class="tarjeta">
+    <button type="button" class="btn-menu" id="btn-menu" aria-label="Menú" aria-expanded="false">☰</button>
+    <div class="panel-menu" id="panel-menu">
+      <button type="button" id="btn-reiniciar">🔄 Reiniciar marcador</button>
+    </div>
+
+    <h1>🎯 Registrar puntuación</h1>
+    <p class="ayuda">Introduce los datos del participante y su puntuación</p>
+
+    <form id="form-puntuacion">
+      <div class="fila">
+        <div>
+          <label for="nombre">Nombre</label>
+          <input type="text" id="nombre" name="nombre" required maxlength="80" autocomplete="given-name">
+        </div>
+        <div>
+          <label for="apellido">Apellido</label>
+          <input type="text" id="apellido" name="apellido" maxlength="80" autocomplete="family-name">
+        </div>
+      </div>
+
+      <div class="fila">
+        <div>
+          <label for="telefono">Teléfono</label>
+          <input type="tel" id="telefono" name="telefono" maxlength="30" autocomplete="tel">
+        </div>
+        <div>
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" maxlength="120" autocomplete="email">
+        </div>
+      </div>
+
+      <label for="puntuacion">Puntuación</label>
+      <input type="number" id="puntuacion" name="puntuacion" required step="1" min="0" max="9999" inputmode="numeric">
+
+      <button type="submit" id="btn-enviar">Guardar puntuación</button>
+    </form>
+
+    <div class="mensaje" id="mensaje"></div>
+  </div>
+
+  <div class="overlay" id="overlay-reiniciar">
+    <div class="dialogo">
+      <h2>¿Reiniciar el marcador?</h2>
+      <p>Las puntuaciones actuales se guardarán en un fichero con la fecha de hoy y el marcador empezará de cero. Esta acción no se puede deshacer desde aquí.</p>
+      <div class="botones">
+        <button type="button" class="btn-cancelar" id="btn-cancelar-reinicio">Cancelar</button>
+        <button type="button" class="btn-aceptar" id="btn-aceptar-reinicio">Sí, reiniciar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('form-puntuacion');
+    const mensaje = document.getElementById('mensaje');
+    const btn = document.getElementById('btn-enviar');
+    const inputPuntuacion = document.getElementById('puntuacion');
+
+    inputPuntuacion.addEventListener('input', () => {
+      const soloDigitos = inputPuntuacion.value.replace(/[^0-9]/g, '').slice(0, 4);
+      if (soloDigitos !== inputPuntuacion.value) {
+        inputPuntuacion.value = soloDigitos;
+      }
+    });
+    const btnMenu = document.getElementById('btn-menu');
+    const panelMenu = document.getElementById('panel-menu');
+    const btnReiniciar = document.getElementById('btn-reiniciar');
+    const overlayReiniciar = document.getElementById('overlay-reiniciar');
+    const btnCancelarReinicio = document.getElementById('btn-cancelar-reinicio');
+    const btnAceptarReinicio = document.getElementById('btn-aceptar-reinicio');
+
+    function mostrarMensaje(texto, tipo) {
+      mensaje.textContent = texto;
+      mensaje.className = 'mensaje ' + tipo;
+    }
+
+    function cerrarMenu() {
+      panelMenu.classList.remove('abierto');
+      btnMenu.setAttribute('aria-expanded', 'false');
+    }
+
+    btnMenu.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const abierto = panelMenu.classList.toggle('abierto');
+      btnMenu.setAttribute('aria-expanded', String(abierto));
+    });
+
+    document.addEventListener('click', (ev) => {
+      if (!panelMenu.contains(ev.target) && ev.target !== btnMenu) {
+        cerrarMenu();
+      }
+    });
+
+    btnReiniciar.addEventListener('click', () => {
+      cerrarMenu();
+      overlayReiniciar.classList.add('visible');
+    });
+
+    btnCancelarReinicio.addEventListener('click', () => {
+      overlayReiniciar.classList.remove('visible');
+    });
+
+    overlayReiniciar.addEventListener('click', (ev) => {
+      if (ev.target === overlayReiniciar) {
+        overlayReiniciar.classList.remove('visible');
+      }
+    });
+
+    btnAceptarReinicio.addEventListener('click', async () => {
+      btnAceptarReinicio.disabled = true;
+      btnAceptarReinicio.textContent = 'Reiniciando…';
+      mensaje.className = 'mensaje';
+      try {
+        const res = await fetch('/api/reiniciar', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) {
+          mostrarMensaje(data.error || 'No se pudo reiniciar el marcador.', 'error');
+        } else {
+          mostrarMensaje('Marcador reiniciado. Las puntuaciones nuevas empiezan de cero.', 'ok');
+        }
+      } catch (err) {
+        mostrarMensaje('Error de conexión con el servidor.', 'error');
+      } finally {
+        overlayReiniciar.classList.remove('visible');
+        btnAceptarReinicio.disabled = false;
+        btnAceptarReinicio.textContent = 'Sí, reiniciar';
+      }
+    });
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      mensaje.className = 'mensaje';
+
+      const datos = {
+        nombre: document.getElementById('nombre').value,
+        apellido: document.getElementById('apellido').value,
+        telefono: document.getElementById('telefono').value,
+        email: document.getElementById('email').value,
+        puntuacion: document.getElementById('puntuacion').value,
+      };
+
+      if (!datos.telefono && !datos.email) {
+        mostrarMensaje('Indica al menos un teléfono o un email.', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Guardando…';
+
+      try {
+        const res = await fetch('/api/puntuaciones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(datos),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          mostrarMensaje(data.error || 'No se pudo guardar la puntuación.', 'error');
+        } else if (data.entroEnTop3) {
+          mostrarMensaje('¡Puntuación guardada! Ha entrado en el puesto #' + data.posicion + ' del podio.', 'ok');
+          form.reset();
+        } else {
+          mostrarMensaje('Puntuación guardada, pero no entra en el Top 3 por ahora.', 'ok');
+          form.reset();
+        }
+      } catch (err) {
+        mostrarMensaje('Error de conexión con el servidor.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Guardar puntuación';
+      }
+    });
+  </script>
+</body>
+</html>

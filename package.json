@@ -1,0 +1,39 @@
+{
+  "name": "concurso-top3",
+  "version": "1.0.0",
+  "description": "App de concurso: marcador con las 3 mejores puntuaciones y formulario de alta",
+  "author": "Broox Technologies",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "node server.js",
+    "electron": "electron .",
+    "empaquetar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/empaquetar.ps1",
+    "dist": "electron-builder --publish=never"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.broox.concursotop3",
+    "productName": "Concurso Top 3",
+    "files": [
+      "main.js",
+      "server.js",
+      "public/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "asar": true
+  }
+}
